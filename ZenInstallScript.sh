@@ -83,7 +83,7 @@ if [ "$RUN_USER" == "root" ]
 then
     while [ "$RUN_USER_VALID" != "y" ]
     do
-        read -rep $'\e[96mThis script will not install ZenCash SecureNode as root,\nplease enter a new user name to install with (min 6 characters)\nand press [ enter]:\e[39m ' RUN_USER 
+        read -rep $'\e[96mThis script will not install ZenCash SecureNode as root,\nplease enter a new user name to install with (min 6 characters)\nand press [enter]:\e[39m ' RUN_USER 
         ################# 
         if [ "$RUN_USER" == "root" ] || [ "$RUN_USER" == "" ] || [ ${#RUN_USER} -lt 6 ]
         then
@@ -98,7 +98,7 @@ else
     read -rep $'use this user to install ZenCash SecureNode? (y/n):\e[39m ' ACCEPT_RUN_USER 
     if [ "$ACCEPT_RUN_USER" != "y" ]
     then
-        read -rep $'\e[96mPlease enter a new user name to install\nwith (min 6 characters) and press [ enter]:\e[39m ' RUN_USER 
+        read -rep $'\e[96mPlease enter a new user name to install\nwith (min 6 characters) and press [enter]:\e[39m ' RUN_USER 
         if [ "$RUN_USER" == "root" ] || [ "$RUN_USER" == "" ] || [ ${#RUN_USER} -lt 6 ]
         then
             echo -e "\e[91mUsername invalid restarting...\e[39m"
@@ -166,7 +166,7 @@ fi
 getStakeAddress () {
 while [ "$STAKE_ADDR_VALID" != "y" ]
 do
-    read -rep $'\e[96mPlease enter your public ZenCash Stake Address\nwith 42 ZEN on it which starts with \"zn...\" and is 35\ncharacters long, (this should be in your local wallet,\nnot on the node!) and press [ enter]:\e[39m ' STAKE_ADDR 
+    read -rep $'\e[96mPlease enter your public ZenCash Stake Address\nwith 42 ZEN on it which starts with \"zn...\" and is 35\ncharacters long, (this should be in your local wallet,\nnot on the node!) and press [enter]:\e[39m ' STAKE_ADDR 
     ################# Test if Stake Address format matches expected t_addr type
     if [ ${#STAKE_ADDR} -ne 35 ] || (( $(echo -e "$STAKE_ADDR" | cut -c-2) != "zn" ))
     then
@@ -190,13 +190,13 @@ displayBreakLine
 
 ## Gets public key if wanted
 getSSHPublicKey () {
-read -rep $'\e[96mIt is recommended that you use a public/private SSH key with this node\nfor logging, do you want to enter one now? (y/n) and press [ enter]:\e[39m ' USESSHPUBLICKEY 
+read -rep $'\e[96mIt is recommended that you use a public/private SSH key with this node\nfor logging, do you want to enter one now? (y/n) and press [enter]:\e[39m ' USESSHPUBLICKEY 
 if [ "$USESSHPUBLICKEY" == "y" ]
 then
-    read -rep $'\e[96mPlease enter public key now and press [ enter]:\e[39m ' SSHPUBLICKEY 
+    read -rep $'\e[96mPlease enter public key now and press [enter]:\e[39m ' SSHPUBLICKEY 
     if [${#SSHPUBLICKEY} == 0] || [ "$SSHPUBLICKEY" == "" ]
     then
-        echo -e "\e[91mSSH public key is invalid please try again.\e[39m"
+        echo -e "\e[91mSSH public key is invalid please try again by pressing [enter] or press n and [enter] \e[39m"
         getSSHPublicKey
     fi
 fi
@@ -214,7 +214,8 @@ do
     ################# Get Stake Address
     getStakeAddress
     ################# Get public key for ssh
-    #getSSHPublicKey
-    SETUPACCEPTED=y
+    getSSHPublicKey
+    ################# Show details recorded so far and confirm
+    
 done
 echo $RUN_USER ":" $FQDN  ":" $IPADDR ":" $STAKE_ADDR
