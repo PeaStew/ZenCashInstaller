@@ -8,10 +8,87 @@
 # get balance curl https://explorer.zensystem.io/insight-api-zen/addr/
 # https://stackoverflow.com/questions/1955505/parsing-json-with-unix-tools
 # curl -s https://explorer.zensystem.io/insight-api-zen/addr/znnV3Mb9TPbRAK6CR2pgunW23V91f2RU1h6 | python -c "import sys, json; print json.load(sys.stdin)[ 'balance' ]" | tail -n1
+# curl -s https://explorer.zensystem.io/insight-api-zen/blocks?limit=1 | python -c "import sys, json; print json.load(sys.stdin)[ 'blocks' ][ 0 ][ 'height' ] " | tail -n1
+# https://github.com/niieani/bash-oo-framework/blob/master/lib/util/tryCatch.sh
 # -----------------------------------------------------------------------------------------------------------------
-# YOU CAN MANUALLY SET THESE VARIABLES OR SET THEM BY RUNNING THE SCRIPT:
-# Fully Qualified Domain Name
-## Get IP address from ifconfig. Assumption: usually first result
+
+## Try Catch 
+
+# no dependencies
+declare -ig __oo__insideTryCatch=0
+declare -g __oo__presetShellOpts="$-"
+
+# in case try-catch is nested, we set +e before so the parent handler doesn't catch us instead
+alias try='[[ $__oo__insideTryCatch -eq 0 ]] || set +e; __oo__presetShellOpts="$-"; __oo__insideTryCatch+=1; ( set -e; true; '
+alias catch='); declare __oo__tryResult=$?; __oo__insideTryCatch+=-1; [[ $__oo__insideTryCatch -lt 1 ]] || set -${__oo__presetShellOpts:-e} && Exception::Extract $__oo__tryResult || '
+
+Exception::SetupTemp() {
+  declare -g __oo__storedExceptionLineFile="$(mktemp -t stored_exception_line.$$.XXXXXXXXXX)"
+  declare -g __oo__storedExceptionSourceFile="$(mktemp -t stored_exception_source.$$.XXXXXXXXXX)"
+  declare -g __oo__storedExceptionBacktraceFile="$(mktemp -t stored_exception_backtrace.$$.XXXXXXXXXX)"
+  declare -g __oo__storedExceptionFile="$(mktemp -t stored_exception.$$.XXXXXXXXXX)"
+}
+
+Exception::CleanUp() {
+  rm -f $__oo__storedExceptionLineFile $__oo__storedExceptionSourceFile $__oo__storedExceptionBacktraceFile $__oo__storedExceptionFile || exit 1
+  exit 0
+}
+
+Exception::ResetStore() {
+  > $__oo__storedExceptionLineFile
+  > $__oo__storedExceptionFile
+  > $__oo__storedExceptionSourceFile
+  > $__oo__storedExceptionBacktraceFile
+}
+
+Exception::GetLastException() {
+  if [[ -s $__oo__storedExceptionFile ]]
+  then
+    cat $__oo__storedExceptionLineFile
+    cat $__oo__storedExceptionFile
+    cat $__oo__storedExceptionSourceFile
+    cat $__oo__storedExceptionBacktraceFile
+
+    Exception::ResetStore
+  else
+    echo -e "${BASH_LINENO[1]}\n \n${BASH_SOURCE[2]#./}"
+  fi
+}
+
+Exception::Extract() {
+  local retVal=$1
+  unset __oo__tryResult
+
+  if [[ $retVal -gt 0 ]]
+  then
+    local IFS=$'\n'
+    __EXCEPTION__=( $(Exception::GetLastException) )
+
+    local -i counter=0
+    local -i backtraceNo=0
+
+    while [[ $counter -lt ${#__EXCEPTION__[@]} ]]
+    do
+      __BACKTRACE_LINE__[$backtraceNo]="${__EXCEPTION__[$counter]}"
+      counter+=1
+      __BACKTRACE_COMMAND__[$backtraceNo]="${__EXCEPTION__[$counter]}"
+      counter+=1
+      __BACKTRACE_SOURCE__[$backtraceNo]="${__EXCEPTION__[$counter]}"
+      counter+=1
+      backtraceNo+=1
+    done
+
+    return 1 # so that we may continue with a "catch"
+  fi
+  return 0
+}
+
+Exception::SetupTemp
+trap Exception::CleanUp EXIT INT TERM
+
+## End Try Catch
+
+#######################################################BASIC SETUP STARTTED####################################################
 declare -a basicSetupPackages=("curl" "pwgen" "bc")
 declare -a basicSetupPackagesDescription=("to check ZEN balance and Blockchain Status" "for psuedo-random user/password generation" "for mathematical calculations")
 STEP_THROUGH_INSTALL='y'
@@ -37,10 +114,6 @@ STAKE_ADDR_BALANCE_FLOAT=''
 STAKE_ADDR_BALANCE_VALID='n'
 ACCEPT_STAKE_ADDR='y'
 SETUPACCEPTED='n'
-USERNAME=$(pwgen -s 16 1)
-PASSWORD=$(pwgen -s 64 1)
-
-
 
 ### Functions
 
@@ -88,8 +161,8 @@ then
     echo -e "add Swap space until a total of 6GB (RAM + Swap) has been"
     echo -e "achieved. There is no guarantee that any VPS with less than"
     echo -e "4GB of RAM will be able to pass the challenges in the required"
-    echo -e "time, ymmv.\n"
-    echo -e "The minimum following detail is required before starting:\e[39m\e[93m"
+    echo -e "time, ymmv.\n\e[39m"
+    echo -e "The minimum following detail is required before starting:\e[93m"
     echo -e "* A domain name in the Fully Qualified Domian Name (FQDN)\n  format e.g. xyz.yourdomain.com which has\n  been mapped with an A record on your domain host\n  to your server IP (auto retrieved\n, please check with your host if it doesn't seem right): $SERVER_IP_ADDR"
     echo -e "* A new username if you start the installation as root"
     echo -e "* A public Zen address \e[4mon your local wallet\e[24m\n  with 42 ZEN for staking\n\e[39m"
@@ -111,6 +184,8 @@ fi
 
 doBasicSetup ()
 {
+    echo -e "Updating system you may be asked for your sudo password by the system..."
+    sudo apt-get update && sudo apt-get -y upgrade && sudo apt-get autoremove -y
     echo -e "Installing the following packages:"
     ITER=0
         for I in ${basicSetupPackages[@]}
@@ -263,14 +338,30 @@ fi
 displayBreakLine
 }
 
-getTotalRAM () {
-    local RAM=$(free -h | tail -n2 | head -n1 | awk '{print$2}' | sed 's/G//')
-    echo $RAM
-}
-
-getTotalSwap () {
-    local Swap=$(free -h | tail -n1 | awk '{print$2}' | sed 's/G//')
-    echo $Swap
+resetSetup ()
+{
+    PREAMBLE_DISPLAYED='n'
+    SERVER_IP_ADDR=$(ifconfig -a | head -n 2 | grep inet | awk '{print$2}' | sed 's/addr\://')
+    SERVER_IP_ADDR_MANUAL=""
+    ## Username for running zend daemon and homke directory
+    RUN_USER=$USER
+    ACCEPT_RUN_USER='y'
+    RUN_USER_VALID='n'
+    FQDN=''
+    FQDN_IP_ADDR=''
+    FQDN_AND_IP_ADDR_VALID='n'
+    ACCEPT_FQDN=y
+    USESSHPUBLICKEY='y'
+    SSHPUBLICKEY=""
+    ACCEPT_SSHPUBLICKEY='y'
+    MIN_STAKE_BALANCE=42
+    STAKE_ADDR=""
+    STAKE_ADDR_VALID='n'
+    STAKE_ADDR_BALANCE=0
+    STAKE_ADDR_BALANCE_FLOAT=''
+    STAKE_ADDR_BALANCE_VALID='n'
+    ACCEPT_STAKE_ADDR='y'
+    SETUPACCEPTED='n'
 }
 
 #shows current details
@@ -283,8 +374,16 @@ showSetupDetails () {
     displayKVBlueWhite2col "Stake Address: " $STAKE_ADDR
     displayKVBlueWhite2col "Stake Address Balance: " $STAKE_ADDR_BALANCE_FLOAT
     displayKVBlueWhite2col "Stake Address Balance Valid: " "$(numberComparisonA_gte_B $STAKE_ADDR_BALANCE 42)"
+    if [ "$USESSHPUBLICKEY" == 'y' ]
+    then
+        displayKVBlueWhite2col "SSH Key in use: " "$(stringComparison "TRUE" "TRUE")"
+        displayKVBlueWhite2col "SSH Key: " $SSHPUBLICKEY
+    else
+        displayKVBlueWhite2col "SSH Key in use: " "$(stringComparison "TRUE" "FALSE")"
+    fi
     }
 
+runInitialSetup () {
 ################# Start collecting needed variables
 displayPreamble
 doBasicSetup
@@ -308,7 +407,257 @@ do
         if [ "$SETUPACCEPTED" == 'y' ]
         then
             break
+        else
+            resetSetup
         fi
     fi
 done
-echo
+}
+
+#runInitialSetup
+
+#######################################################BASIC SETUP COMPLETED####################################################
+
+#######################################################INSTALL STARTED####################################################
+
+##Variables
+USERNAME=$(pwgen -s 16 1)
+PASSWORD=$(pwgen -s 64 1)
+
+##Functions
+getProcessorName () {
+    local processorName=$(cat /proc/cpuinfo | grep -e "model name" | uniq | awk '{for(i=4;i<=NF;i++)printf "%s",$i (i==NF?ORS:OFS)}')
+    echo $processorName
+}
+
+getCPUCount ()
+{
+    local cpuCount=$(cat /proc/cpuinfo | grep "physical id" | sort -u | wc -l)
+    echo $cpuCount
+}
+
+getCoreCount () {
+    local coreCount=$(nproc --all)
+    echo $coreCount
+}
+
+getTotalRAM () {
+    local RAM=$(free -h | tail -n2 | head -n1 | awk '{print$2}' | sed 's/G//')
+    RAM=3
+    echo $RAM
+}
+
+getTotalSwap () {
+    local Swap=$(free -h | tail -n1 | awk '{print$2}' | sed 's/G//')
+    echo $Swap
+}
+
+getTotalRAMPlusSwap ()
+{
+    local RAM=$(getTotalRAM)
+    local Swap=$(getTotalSwap)
+    total=$(bc <<< "$RAM + $Swap")
+    echo $total
+}
+
+getRAMPlusSwapDeltaToRecommended () {
+    local RAM=$(getTotalRAM)
+    missing=$(bc <<< "6.0 - $RAM")
+    echo -e "$missing"
+}
+
+testEnoughRAMplusSwap ()
+{
+    total=$(getTotalRAMPlusSwap)
+    enough=$(bc <<< "$total >= 6.0")
+    echo -e "$enough"
+}
+
+round()
+{
+    echo $(printf %.$2f $(echo "scale=$2;(((10^$2)*$1)+0.5)/(10^$2)" | bc))
+};
+
+showSystemStats () {
+    clear
+    echo "System statistics:"
+    displayKVBlueWhite2col "Processor Name: " "$(getProcessorName)"
+    displayKVBlueWhite2col "Physical CPUs: " "$(getCPUCount)"
+    displayKVBlueWhite2col "Logical Cores: " "$(getCoreCount)"
+    displayKVBlueWhite2col "RAM: " "$(getTotalRAM)"
+    displayKVBlueWhite2col "Swap: " "$(getTotalSwap)"
+    displayKVBlueWhite2col "Total RAM + Swap: " "$(getTotalRAMPlusSwap)"
+}
+
+allocateSwapFile () {
+    delta=$(getRAMPlusSwapDeltaToRecommended)
+    deltaRounded=$(round $delta 0)
+    sudo fallocate -l "$deltaRounded"G /swapfile
+    sudo chmod 600 /swapfile
+    try
+    {
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        sudo echo "/swapfile none swap sw 0 0" >> /etc/fstab
+        sudo echo "vm.swappiness=10" >> /etc/sysctl.conf
+    } catch {
+        echo "Enabling Swap Failed!"
+        sudo rm-rf /swapfile
+    }
+    
+}
+
+testMemory () {
+    resultTestRamPlusSwap=$(testEnoughRAMplusSwap)
+    if [ "$resultTestRamPlusSwap" == 0 ]
+    then
+        read -rep "There has not been enough RAM + Swap detected on this system to pass challenges.\nWould you like to increase your swap space\n(this will not work on OpenVZ based VPS, select n if this is you)? (y/n) + [enter]:" INCREASESWAP
+        if [ "$INCREASESWAP" == 'y' ]
+        then
+            allocateSwapFile
+            return 1
+        else
+            return 0
+        fi
+    fi   
+}
+
+createNewUser ()
+{
+    if [ "$ACCEPT_RUN_USER" != 'y' ] && [ "$USER" != "$RUN_USER" ]
+    echo -e "Creating new user $RUN_USER please respond to the questions\nasked by the system, you do not need to answer more than your password\nyou can press [enter] for all other questions and the (y) to confirm."
+    sudo adduser $RUN_USER
+    sudo usermod -g sudo $RUN_USER 
+    sudo su $RUN_USER > /dev/null
+
+}
+
+setupFirewall () {
+    echo -e "Setting up firewall to block ports that aren't needed..."
+    sudo ufw default allow outgoing > /dev/null
+    sudo ufw default deny incoming > /dev/null
+    sudo ufw allow ssh/tcp > /dev/null
+    sudo ufw limit ssh/tcp > /dev/null
+    sudo ufw allow http/tcp > /dev/null
+    sudo ufw allow https/tcp > /dev/null
+    sudo ufw allow 9033/tcp > /dev/null
+    sudo ufw allow 19033/tcp > /dev/null
+    sudo ufw logging on > /dev/null
+    sudo ufw enable > /dev/null
+    echo -e "Checking firewall status..."
+    sudo ufw status
+}
+
+setupFail2Ban ()
+{
+    echo -e "Setting up fail2ban to slow down people trying to brute force login to your server..."
+    sudo apt -y install fail2ban > /dev/null
+    sudo systemctl enable fail2ban > /dev/null
+    echo -e "Starting fail2ban..."
+    sudo systemctl start fail2ban
+    
+}
+
+setupRKHunter ()
+{
+    echo -e "Setting up RKHunter to scan system for root kits..."
+    sudo apt -y install rkhunter > /dev/null 
+}
+
+createUpgradeScript () {
+    echo -e " 
+    #!/bin/bash
+    sudo apt update
+    sudo apt -y dist-upgrade
+    sudo apt -y autoremove
+    sudo rkhunter --propupd" > ~/upgrade_script.sh
+    chmod u+x ~/upgrade_script.sh
+}
+
+doBasicSecuritySetup () {
+    setupFirewall
+    setupFail2Ban
+    setupRKHunter
+}
+
+installZen () {
+    echo "Installing Zen Node Software..."
+    sudo apt-get install apt-transport-https lsb-release -y
+    echo 'deb https://zencashofficial.github.io/repo/ '$(lsb_release -cs)' main' | sudo tee --append /etc/apt/sources.list.d/zen.list
+    gpg --keyserver ha.pool.sks-keyservers.net --recv 219F55740BBF7A1CE368BA45FB7053CE4991B669
+    gpg --export 219F55740BBF7A1CE368BA45FB7053CE4991B669 | sudo apt-key add -
+    sudo apt-get update
+    sudo apt-get install zen
+    zen-fetch-params
+    zend > /dev/null
+}
+
+createZenConfFile () {
+    echo -e "rpcuser=$USERNAME
+    rpcpassword=$PASSWORD
+    rpcport=18231
+    rpcallowip=127.0.0.1
+    server=1
+    daemon=1
+    listen=1
+    txindex=1
+    logtimestamps=1
+    ### testnet config
+    #testnet=1" > ~/.zen/zen.conf
+
+}
+
+getLatestBlockOnExplorer () {
+    latest=$(curl -s https://explorer.zensystem.io/insight-api-zen/blocks?limit=1 | python -c "import sys, json; print json.load(sys.stdin)[ 'blocks' ][ 0 ][ 'height' ] " | tail -n1)
+    echo -e "$latest"
+}
+
+getLatestBlockOnLocal () {
+    latest=$(zen-cli getinfo | python -c "import sys, json; print json.load(sys.stdin)[ 'blocks' ] " | tail -n1)
+    echo -e "$latest"
+}
+
+getPercentageBlockCompletion () {
+    latestExplorer=$(getLatestBlockOnExplorer)
+    latestLocal=$(getLatestBlockOnLocal)
+    percentageComplete=$(bc <<< "($latestLocal / $latestExplorer) * 100")
+    echo -e "$percentageComplete %"
+}
+
+checkBlocksAreIncreasing () {
+    lastBlock=$(getLatestBlockOnLocal)
+    for (( i=1; i<=5; i++))
+	do
+        sleep 5s
+        currentBlock=$(getLatestBlockOnLocal)
+        latestExplorer=$(getLatestBlockOnExplorer)
+		echo "Number $i"
+	done
+}
+
+############################## RUN ###############################
+displayBreakLine
+read -rep "Set up can now start, press any key to continue or ctrl+c to quit." CONTINUE
+showSystemStats
+MEMTEST=$(testMemory)
+if [ $MEMTEST == 1 ]
+then
+    "Swap creation attempted."
+    showSystemStats
+fi
+echo "Creating new user..."
+createNewUser
+echo "Doing basic security setup..."
+doBasicSecuritySetup
+echo "Creating upgrade script, after installation run with 'cd ~/ && ./upgrade_script.sh' ..."
+createUpgradeScript
+echo "Installing Zen..."
+installZen
+echo "Creating Zen configuration file..."
+createZenConfFile
+#start zend
+echo "Starting Zen Node Software..."
+zend
+checkBlocksAreIncreasing
+
+
