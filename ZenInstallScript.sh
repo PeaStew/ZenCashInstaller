@@ -18,7 +18,7 @@ STEP_THROUGH_INSTALL='y'
 PREAMBLE_DISPLAYED='n'
 SERVER_IP_ADDR=$(ifconfig -a | head -n 2 | grep inet | awk '{print$2}' | sed 's/addr\://')
 SERVER_IP_ADDR_MANUAL=""
-## Username for running zend daemon and storage area for 
+## Username for running zend daemon and homke directory
 RUN_USER=$USER
 ACCEPT_RUN_USER='y'
 RUN_USER_VALID='n'
@@ -26,12 +26,14 @@ FQDN=''
 FQDN_IP_ADDR=''
 FQDN_AND_IP_ADDR_VALID='n'
 ACCEPT_FQDN=y
-USESSHPUBLICKEY='n'
+USESSHPUBLICKEY='y'
 SSHPUBLICKEY=""
 ACCEPT_SSHPUBLICKEY='y'
+MIN_STAKE_BALANCE=42
 STAKE_ADDR=""
 STAKE_ADDR_VALID='n'
 STAKE_ADDR_BALANCE=0
+STAKE_ADDR_BALANCE_FLOAT=''
 ACCEPT_STAKE_ADDR='y'
 SETUPACCEPTED='n'
 USERNAME=$(pwgen -s 16 1)
@@ -58,6 +60,15 @@ stringComparison () {
     else
         echo -e "\e[91mFALSE\e[39m"
     fi
+}
+
+numberComparisonA_gte_B () {
+   if (( $1 >= $2 ))
+    then
+        echo -e "\e[92mTRUE\e[39m"
+    else
+        echo -e "\e[91mFALSE\e[39m"
+    fi 
 }
 
 displayBreakLine () {
@@ -108,7 +119,6 @@ doBasicSetup ()
             displayKVBlueWhite2col "${I} " "${basicSetupPackagesDescription[${ITER}]}"
             ITER=$(expr $ITER + 1)
         done
-    displayBreakLine
     sudo apt-get install curl pwgen bc -y > /dev/null
     displayBreakLine
 }
@@ -199,14 +209,14 @@ else
 fi
 }
 
-getZENtAddressBalance () {
-    STAKE_ADDR_BALANCE_TEMP=$(curl -s https://explorer.zensystem.io/insight-api-zen/addr/$1 | python -c "import sys, json; print json.load(sys.stdin)[ 'balance' ]" | tail -n1)
-    STAKE_ADDR_BALANCE_TEMP2=$(( ${STAKE_ADDR_BALANCE_TEMP%.*} + 0 ))
-    echo -e "$STAKE_ADDR_BALANCE_TEMP2"
+setZENtAddressBalance () {
+    STAKE_ADDR_BALANCE_FLOAT=$(curl -s https://explorer.zensystem.io/insight-api-zen/addr/$1 | python -c "import sys, json; print json.load(sys.stdin)[ 'balance' ]" | tail -n1)
+    STAKE_ADDR_BALANCE=$(( ${STAKE_ADDR_BALANCE_FLOAT%.*} + 0 ))
 }
 
 ## Gets Stake Address
 getStakeAddress () {
+displayPreamble
 while [ "$STAKE_ADDR_VALID" != "y" ]
 do
     read -rep $'\e[96mPlease enter your public ZenCash Stake Address\nwith 42 ZEN on it which starts with \"zn...\" and is 35\ncharacters long, (this should be in your local wallet,\nnot on the node!) and press [enter]:\e[39m ' STAKE_ADDR 
@@ -217,12 +227,12 @@ do
         continue
     else 
         ################# Test stake address using explorer insight api
-        STAKE_ADDR_BALANCE=$(getZENtAddressBalance "$STAKE_ADDR")
+        setZENtAddressBalance "$STAKE_ADDR"
         if [[ $STAKE_ADDR_BALANCE -lt 42 ]]
         then
-            echo -e "\e[91mCurrent stake address balance is invalid: $STAKE_ADDR_BALANCE which is below the required 42 ZEN\e[39m"
+            echo -e "\e[91mCurrent stake address balance is invalid: $STAKE_ADDR_BALANCE_FLOAT which is below the required 42 ZEN\e[39m"
         else
-            echo -e "\e[92mCurrent stake address balance is valid: $STAKE_ADDR_BALANCE\e[39m"
+            echo -e "\e[92mCurrent stake address balance is valid: $STAKE_ADDR_BALANCE_FLOAT\e[39m"
             STAKE_ADDR_VALID='y'
         fi
     fi
@@ -232,15 +242,17 @@ displayBreakLine
 
 ## Gets public key if wanted
 getSSHPublicKey () {
+displayPreamble
+read -rep $'\e[96mIt is recommended that you use a public/private SSH key with this node\nfor logging, do you want to enter one now? (y/n) and press [enter]:\e[39m ' USESSHPUBLICKEY 
+
 if [ "$USESSHPUBLICKEY" == 'y' ]
 then
-    read -rep $'\e[96mIt is recommended that you use a public/private SSH key with this node\nfor logging, do you want to enter one now? (y/n) and press [enter]:\e[39m ' USESSHPUBLICKEY 
-    while [ ${#SSHPUBLICKEY} == 0 ] || [ "$SSHPUBLICKEY" == "" ]
+    while [ ${#SSHPUBLICKEY} == 0 ] || [ "$SSHPUBLICKEY" == "" ] && [ "$USESSHPUBLICKEY" == 'y' ]
     do
         read -rep $'\e[96mPlease enter public key now and press [enter]:\e[39m ' SSHPUBLICKEY 
         if [ ${#SSHPUBLICKEY} == 0 ] || [ "$SSHPUBLICKEY" == "" ]
         then
-            read -rep $'\e[91mSSH public key is invalid please try entering again by pressing [enter] or press n and [enter] to cancel: \e[39m' CONTINUE
+            read -rep $'\e[91mSSH public key is invalid please try entering again and pressing [enter] or press n and [enter] to cancel: \e[39m' CONTINUE
             if [ $CONTINUE == 'n']
             then
                 USESSHPUBLICKEY='n'
@@ -250,8 +262,6 @@ then
 fi
 displayBreakLine
 }
-
-
 
 getTotalRAM () {
     local RAM=$(free -h | tail -n2 | head -n1 | awk '{print$2}' | sed 's/G//')
@@ -271,8 +281,8 @@ showSetupDetails () {
     displayKVBlueWhite2col "Server IP Address: " $SERVER_IP_ADDR
     displayKVBlueWhite2col "FQDN IP Address and Server IP Address Match: " "$(stringComparison $FQDN_IP_ADDR $SERVER_IP_ADDR)"
     displayKVBlueWhite2col "Stake Address: " $STAKE_ADDR
-    displayKVBlueWhite2col "Stake Address Balance: " $STAKE_ADDR_BALANCE
-    displayKVBlueWhite2col "Stake Address Balance Valid: " $STAKE_ADDR_BALANCE
+    displayKVBlueWhite2col "Stake Address Balance: " $STAKE_ADDR_BALANCE_FLOAT
+    displayKVBlueWhite2col "Stake Address Balance Valid: " "$(numberComparisonA_gte_B $STAKE_ADDR_BALANCE 42)"
 }
 
 ################# Start collecting needed variables
@@ -289,6 +299,10 @@ do
     getSSHPublicKey
     ################# Show details recorded so far and confirm
     showSetupDetails
-    SETUPACCEPTED='y'
+    read -rep "Are the details above correct? (y/n) + [enter]:" SETUPACCEPTED
+    if [ "$SETUPACCEPTED" == 'y' ]
+    then
+        break
+    fi
 done
 #echo $RUN_USER ":" $FQDN  ":" $SERVER_IP_ADDR ":" $STAKE_ADDR
