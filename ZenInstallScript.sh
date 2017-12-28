@@ -89,8 +89,8 @@ trap Exception::CleanUp EXIT INT TERM
 ## End Try Catch
 
 #######################################################BASIC SETUP STARTTED####################################################
-declare -a basicSetupPackages=("curl" "pwgen" "bc")
-declare -a basicSetupPackagesDescription=("to check ZEN balance and Blockchain Status" "for psuedo-random user/password generation" "for mathematical calculations")
+declare -a basicSetupPackages=("curl" "pwgen" "bc" "git")
+declare -a basicSetupPackagesDescription=("to check ZEN balance and Blockchain Status" "for psuedo-random user/password generation" "for mathematical calculations" "to retrieve software from github")
 STEP_THROUGH_INSTALL='y'
 PREAMBLE_DISPLAYED='n'
 SERVER_IP_ADDR=$(ifconfig -a | head -n 2 | grep inet | awk '{print$2}' | sed 's/addr\://')
@@ -178,9 +178,6 @@ then
     displayBreakLine
 fi
 }
-
-
-
 
 doBasicSetup ()
 {
@@ -631,8 +628,49 @@ checkBlocksAreIncreasing () {
         sleep 5s
         currentBlock=$(getLatestBlockOnLocal)
         latestExplorer=$(getLatestBlockOnExplorer)
-		echo "Number $i"
+        percentageComplete=$(getPercentageBlockCompletion)
+        blocksIncreasing=$(numberComparisonA_gte_B $currentBlock $lastBlock)
+
+		displayKVBlueWhite2col "Previous Local Block: " "$lastBlock"
+        displayKVBlueWhite2col "Current Local Block: " "$currentBlock"
+        displayKVBlueWhite2col "Current Explorer Block: " "$latestExplorer"
+        displayKVBlueWhite2col "Percentage Completed: " "$percentageComplete"
+        displayKVBlueWhite2col "Blocks Increasing: " "$blocksIncreasing"      
+
 	done
+}
+
+installTLSCertificate () {
+    echo "Installing acme.sh software for TLS certificate..."
+    sudo apt install socat -y > /dev/null
+    cd ~/
+    git clone https://github.com/Neilpang/acme.sh.git > /dev/null
+    cd acme.sh
+    ./acme.sh --install > /dev/null
+   
+    echo "Generating TLS certificate..."
+    sudo ~/.acme.sh/acme.sh --issue --standalone -d $FQDN > /dev/null
+    
+    echo "Installing cron job to renew TLS certificate automatically..."
+    cd ~/
+    touch ".selected_editor"
+    sudo echo "SELECTED_EDITOR=\"/bin/nano\"" >> /home/$RUN_USER/.selected_editor
+    (crontab -l -u $RUN_USER 2>/dev/null; echo "6 0 * * * \"/home/$RUN_USER/.acme.sh\"/acme.sh --cron --home \"/home/$RUN_USER/.acme.sh\" > /dev/null") | crontab -
+    
+    echo "Installing TLS Certificate..."
+    sudo cp /home/$RUN_USER/.acme.sh/$FQDN/ca.cer /usr/share/ca-certificates/ca.crt
+    sudo sh -c "echo 'ca.crt' >> /etc/ca-certificates.conf"
+    sudo update-ca-certificates > /dev/null
+
+    echo "Installing TLS Certificate into Zen node configuration file..."
+    pkill -f zend
+    zen-cli stop
+    sudo echo -e "tlscertpath=/home/$RUN_USER/.acme.sh/$FQDN/$FQDN.cer\ntlskeypath=/home/$RUN_USER/.acme.sh/$FQDN/$FQDN.key" >> ~/.zen/zen.conf
+}
+
+checkZenNodeHasTLS () {
+    certified=$(zen-cli getnetworkinfo | python -c "import sys, json; print json.load(sys.stdin)[ 'tls_cert_verified' ] " | tail -n1)
+    echo -e "$certified"
 }
 
 ############################## RUN ###############################
@@ -658,6 +696,13 @@ createZenConfFile
 #start zend
 echo "Starting Zen Node Software..."
 zend
+echo "Checking that Zen blockchain is syncing..."
 checkBlocksAreIncreasing
+echo "Installing software to enable ZenCash secure node..."
+installTLSCertificate
+#start zend
+echo "Restarting Zen Node Software..."
+zend
+sleep 10s
 
 
