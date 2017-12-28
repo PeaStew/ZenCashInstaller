@@ -12,9 +12,12 @@
 # YOU CAN MANUALLY SET THESE VARIABLES OR SET THEM BY RUNNING THE SCRIPT:
 # Fully Qualified Domain Name
 ## Get IP address from ifconfig. Assumption: usually first result
+declare -a basicSetupPackages=("curl" "pwgen" "bc")
+declare -a basicSetupPackagesDescription=("to check ZEN balance and Blockchain Status" "for psuedo-random user/password generation" "for mathematical calculations")
+STEP_THROUGH_INSTALL='y'
 PREAMBLE_DISPLAYED='n'
-IP_ADDR=$(ifconfig -a | head -n 2 | grep inet | awk '{print$2}' | sed 's/addr\://')
-IP_ADDR_MANUAL=""
+SERVER_IP_ADDR=$(ifconfig -a | head -n 2 | grep inet | awk '{print$2}' | sed 's/addr\://')
+SERVER_IP_ADDR_MANUAL=""
 ## Username for running zend daemon and storage area for 
 RUN_USER=$USER
 ACCEPT_RUN_USER='y'
@@ -36,7 +39,27 @@ PASSWORD=$(pwgen -s 64 1)
 
 
 
-#functions
+### Functions
+
+## Display Functions
+displayKVBlueWhite2col () {
+    echo -e $'\e[96m'$1$'\e[39m'$2
+}
+displayKeyValueGreenWhite2col () {
+    echo -e $'\e[96m'$1$'\e[39m'$2
+}
+
+##Comparison functions 
+#accepts 2 strings and compares them, returns FALSE/TRUE with appropriate colours
+stringComparison () {
+    if [ "$1" == "$2" ]
+    then
+        echo -e "\e[92mTRUE\e[39m"
+    else
+        echo -e "\e[91mFALSE\e[39m"
+    fi
+}
+
 displayBreakLine () {
     echo "---------------------------------------------------------------------"
 }
@@ -55,7 +78,7 @@ then
     echo -e "4GB of RAM will be able to pass the challenges in the required"
     echo -e "time, ymmv.\n"
     echo -e "The minimum following detail is required before starting:\e[39m\e[93m"
-    echo -e "* A domain name in the Fully Qualified Domian Name (FQDN)\n  format e.g. xyz.yourdomain.com which has\n  been mapped with an A record on your domain host\n  to your server IP: $IP_ADDR"
+    echo -e "* A domain name in the Fully Qualified Domian Name (FQDN)\n  format e.g. xyz.yourdomain.com which has\n  been mapped with an A record on your domain host\n  to your server IP (auto retrieved\n, please check with your host if it doesn't seem right): $SERVER_IP_ADDR"
     echo -e "* A new username if you start the installation as root"
     echo -e "* A public Zen address \e[4mon your local wallet\e[24m\n  with 42 ZEN for staking\n\e[39m"
     echo -e "Optional but recommended:\e[39m\e[93m"
@@ -71,10 +94,23 @@ then
 fi
 }
 
+
+
+
 doBasicSetup ()
 {
-    echo -e "Installing 'curl' to check ZEN balance, 'pwgen' for random password generation and 'bc' for mathematical conversions ..."
-    sudo apt-get install curl pwgen
+    echo -e "Checking if needed packages are installed:"
+    
+    echo -e "Installing the following packages:"
+    ITER=0
+        for I in ${basicSetupPackages[@]}
+        do  
+            displayKVBlueWhite2col "${I} " "${basicSetupPackagesDescription[${ITER}]}"
+            ITER=$(expr $ITER + 1)
+        done
+    displayBreakLine
+    sudo apt-get install curl pwgen bc -y > /dev/null
+    displayBreakLine
 }
 
 ## Gets username and checks for invalid
@@ -117,7 +153,7 @@ displayPreamble
 while [ "$FQDN_AND_IP_ADDR_VALID" != "y" ]
 do
     # Initial check after loop
-    if [ "$FQDN_IP_ADDR" == "$IP_ADDR" ]
+    if [ "$FQDN_IP_ADDR" == "$SERVER_IP_ADDR" ]
     then
         FQDN_AND_IP_ADDR_VALID=y
         echo -e "\e[92mFQDN IP Address and server IP Address match.\e[39m"
@@ -125,22 +161,22 @@ do
     fi
 
     read -rep $'\e[96mPlease enter your Fully Qualified Domain Name (FQDN)\ne.g. secnode1.yourdommain.com and press [enter]:\e[39m ' FQDN
-    FQDN_IP_ADDR=$(getIP_ADDRFromFQDN $FQDN)
+    FQDN_IP_ADDR=$(getIPAddressFromFQDN $FQDN)
     if [ "$FQDN_IP_ADDR" == 0 ]
     then
         echo -e "\e[91mFQDN does not return any result, please ensure that\nyou have added an A record on your domain host for\nthe FQDN and the IP address of this server. Restarting...\e[39m"
         continue
     fi
-    if [ "$FQDN_IP_ADDR" != "$IP_ADDR" ]
+    if [ "$FQDN_IP_ADDR" != "$SERVER_IP_ADDR" ]
         then
-            echo -e "\e[91mThe auto retrieved IP address $IP_ADDR and\nFQDN IP address $FQDN_IP_ADDR do not match, please ensure\nthat you have added an A record on your\ndomain host for the FQDN and the IP address of this server.\n\e[39m"
-            read -rep $'\e[96mIf you are sure you have done this correctly\nalready and want to continue, please enter the IP\naddress of your server now and press [enter]\n, or just leave entry blank and press [enter] to try again:\e[39m ' IP_ADDR_MANUAL
-            if [ "$IP_ADDR_MANUAL" == "" ]
+            echo -e "\e[91mThe auto retrieved IP address $SERVER_IP_ADDR and\nFQDN IP address $FQDN_IP_ADDR do not match, please ensure\nthat you have added an A record on your\ndomain host for the FQDN and the IP address of this server.\n\e[39m"
+            read -rep $'\e[96mIf you are sure you have done this correctly\nalready and want to continue, please enter the IP\naddress of your server now and press [enter]\n, or just leave entry blank and press [enter] to try again:\e[39m ' SERVER_IP_ADDR_MANUAL
+            if [ "$SERVER_IP_ADDR_MANUAL" == "" ]
             then
-                IP_ADDR=$(ifconfig -a | head -n 2 | grep inet | awk '{print$2}' | sed 's/addr\://')
+                SERVER_IP_ADDR=$(ifconfig -a | head -n 2 | grep inet | awk '{print$2}' | sed 's/addr\://')
                 continue
             else
-                IP_ADDR=$IP_ADDR_MANUAL
+                SERVER_IP_ADDR=$SERVER_IP_ADDR_MANUAL
                 continue
             fi
         else
@@ -152,7 +188,7 @@ displayBreakLine
 }
 
 ## Get IP address from FQDN
-getIP_ADDRFromFQDN () {
+getIPAddressFromFQDN () {
 displayPreamble
 FQDN_TEST=$(ping -a $1 | head -n 1 | awk '{print$3}' | sed s/\(// | sed s/\)//)
 if echo $FQDN_TEST | grep -q "." &&  ! echo $FQDN_TEST | grep -q "Usage" && ! echo $FQDN_TEST | grep -q "unknown" 
@@ -184,9 +220,9 @@ do
         STAKE_ADDR_BALANCE=$(getZENtAddressBalance "$STAKE_ADDR")
         if [[ $STAKE_ADDR_BALANCE -lt 42 ]]
         then
-            echo -e "\e[91mCurrent stake address balance is invalid: $STAKE_ADDR_BALANCE_TEMP which is below the required 42 ZEN\e[39m"
+            echo -e "\e[91mCurrent stake address balance is invalid: $STAKE_ADDR_BALANCE which is below the required 42 ZEN\e[39m"
         else
-            echo -e "\e[92mCurrent stake address balance is valid: $STAKE_ADDR_BALANCE_TEMP\e[39m"
+            echo -e "\e[92mCurrent stake address balance is valid: $STAKE_ADDR_BALANCE\e[39m"
             STAKE_ADDR_VALID='y'
         fi
     fi
@@ -196,39 +232,26 @@ displayBreakLine
 
 ## Gets public key if wanted
 getSSHPublicKey () {
-read -rep $'\e[96mIt is recommended that you use a public/private SSH key with this node\nfor logging, do you want to enter one now? (y/n) and press [enter]:\e[39m ' USESSHPUBLICKEY 
-if [ "$USESSHPUBLICKEY" == "y" ]
+if [ "$USESSHPUBLICKEY" == 'y' ]
 then
-    read -rep $'\e[96mPlease enter public key now and press [enter]:\e[39m ' SSHPUBLICKEY 
-    if [ ${#SSHPUBLICKEY} == 0] || [ "$SSHPUBLICKEY" == "" ]
-    then
-        read -rep $'\e[91mSSH public key is invalid please try entering again by pressing [enter] or press n and [enter] to cancel: \e[39m' CONTINUE
-        if [ $CONTINUE == 'n']
+    read -rep $'\e[96mIt is recommended that you use a public/private SSH key with this node\nfor logging, do you want to enter one now? (y/n) and press [enter]:\e[39m ' USESSHPUBLICKEY 
+    while [ ${#SSHPUBLICKEY} == 0 ] || [ "$SSHPUBLICKEY" == "" ]
+    do
+        read -rep $'\e[96mPlease enter public key now and press [enter]:\e[39m ' SSHPUBLICKEY 
+        if [ ${#SSHPUBLICKEY} == 0 ] || [ "$SSHPUBLICKEY" == "" ]
         then
-            USESSHPUBLICKEY='n'
-        else
-            getSSHPublicKey
+            read -rep $'\e[91mSSH public key is invalid please try entering again by pressing [enter] or press n and [enter] to cancel: \e[39m' CONTINUE
+            if [ $CONTINUE == 'n']
+            then
+                USESSHPUBLICKEY='n'
+            fi    
         fi
-    fi
+    done
 fi
 displayBreakLine
 }
 
-echoDisplayKVBlueWhite () {
-    echo -e $'\e[96m'$1$'\e[39m'$2
-}
-echoDisplayKeyValueGreenWhite () {
-    echo -e $'\e[96m'$1$'\e[39m'$2
-}
 
-getFQDNIPandServerIPMatch () {
-    if [ "$FQDN_IP_ADDR" == "$IP_ADDR" ]
-    then
-        echo -e "\e[92mTRUE\e[39m"
-    else
-        echo -e "\e[91FALSE\e[39m"
-    fi
-}
 
 getTotalRAM () {
     local RAM=$(free -h | tail -n2 | head -n1 | awk '{print$2}' | sed 's/G//')
@@ -242,13 +265,14 @@ getTotalSwap () {
 
 #shows current details
 showSetupDetails () {
-    echoDisplayKVBlueWhite "Username: " $RUN_USER
-    echoDisplayKVBlueWhite "FQDN: " $FQDN
-    echoDisplayKVBlueWhite "FQDN IP Address: " $FQDN_IP_ADDR
-    echoDisplayKVBlueWhite "Server IP Address: " $IP_ADDR
-    echoDisplayKVBlueWhite "FQDN IP Address and Server IP Address Match: " echo '$(getFQDNIPandServerIPMatch)'
-    echoDisplayKVBlueWhite "Stake Address: " $STAKE_ADDR
-    echoDisplayKVBlueWhite "Stake Address Balance: " $STAKE_ADDR_BALANCE
+    displayKVBlueWhite2col "Username: " $RUN_USER
+    displayKVBlueWhite2col "FQDN: " $FQDN
+    displayKVBlueWhite2col "FQDN IP Address: " $FQDN_IP_ADDR
+    displayKVBlueWhite2col "Server IP Address: " $SERVER_IP_ADDR
+    displayKVBlueWhite2col "FQDN IP Address and Server IP Address Match: " "$(stringComparison $FQDN_IP_ADDR $SERVER_IP_ADDR)"
+    displayKVBlueWhite2col "Stake Address: " $STAKE_ADDR
+    displayKVBlueWhite2col "Stake Address Balance: " $STAKE_ADDR_BALANCE
+    displayKVBlueWhite2col "Stake Address Balance Valid: " $STAKE_ADDR_BALANCE
 }
 
 ################# Start collecting needed variables
@@ -256,15 +280,15 @@ displayPreamble
 doBasicSetup
 while [ "$SETUPACCEPTED" != 'y' ]
 do
-    #getUserName
+    getUserName
     ################# Get FQDN
-    #getFQDN
+    getFQDN
     ################# Get Stake Address
     getStakeAddress
     ################# Get public key for ssh
-    #getSSHPublicKey
+    getSSHPublicKey
     ################# Show details recorded so far and confirm
     showSetupDetails
     SETUPACCEPTED='y'
 done
-#echo $RUN_USER ":" $FQDN  ":" $IP_ADDR ":" $STAKE_ADDR
+#echo $RUN_USER ":" $FQDN  ":" $SERVER_IP_ADDR ":" $STAKE_ADDR
