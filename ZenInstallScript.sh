@@ -34,6 +34,7 @@ STAKE_ADDR=""
 STAKE_ADDR_VALID='n'
 STAKE_ADDR_BALANCE=0
 STAKE_ADDR_BALANCE_FLOAT=''
+STAKE_ADDR_BALANCE_VALID='n'
 ACCEPT_STAKE_ADDR='y'
 SETUPACCEPTED='n'
 USERNAME=$(pwgen -s 16 1)
@@ -110,8 +111,6 @@ fi
 
 doBasicSetup ()
 {
-    echo -e "Checking if needed packages are installed:"
-    
     echo -e "Installing the following packages:"
     ITER=0
         for I in ${basicSetupPackages[@]}
@@ -232,6 +231,7 @@ do
         then
             echo -e "\e[91mCurrent stake address balance is invalid: $STAKE_ADDR_BALANCE_FLOAT which is below the required 42 ZEN\e[39m"
         else
+            STAKE_ADDR_BALANCE_VALID='y'
             echo -e "\e[92mCurrent stake address balance is valid: $STAKE_ADDR_BALANCE_FLOAT\e[39m"
             STAKE_ADDR_VALID='y'
         fi
@@ -283,7 +283,7 @@ showSetupDetails () {
     displayKVBlueWhite2col "Stake Address: " $STAKE_ADDR
     displayKVBlueWhite2col "Stake Address Balance: " $STAKE_ADDR_BALANCE_FLOAT
     displayKVBlueWhite2col "Stake Address Balance Valid: " "$(numberComparisonA_gte_B $STAKE_ADDR_BALANCE 42)"
-}
+    }
 
 ################# Start collecting needed variables
 displayPreamble
@@ -299,10 +299,16 @@ do
     getSSHPublicKey
     ################# Show details recorded so far and confirm
     showSetupDetails
-    read -rep "Are the details above correct? (y/n) + [enter]:" SETUPACCEPTED
-    if [ "$SETUPACCEPTED" == 'y' ]
+    if [ "$FQDN_AND_IP_ADDR_VALID" != 'y' ] || [ "$STAKE_ADDR_BALANCE_VALID" != 'y' ]
     then
-        break
+        echo -e "Too many failures, cannot continue. Restarting..."
+        PREAMBLE_DISPLAYED='n'
+    else
+        read -rep "Are the details above correct? (y/n) + [enter]:" SETUPACCEPTED
+        if [ "$SETUPACCEPTED" == 'y' ]
+        then
+            break
+        fi
     fi
 done
-#echo $RUN_USER ":" $FQDN  ":" $SERVER_IP_ADDR ":" $STAKE_ADDR
+echo
