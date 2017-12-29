@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+znnV3Mb9TPbRAK6CR2pgunW23V91f2RU1h6
 # Author: Lukas Bures
 # Credits: Rolf Versluis
 
@@ -100,7 +100,7 @@ sudo echo "SELECTED_EDITOR=\"/bin/nano\"" >> /home/$USER/.selected_editor
 # enter to navigate the CA Certificates menu:
 echo "<USER> is $USER"
 echo "<FQDN> is $FQDN"
-udo cp /home/$USER/.acme.sh/$FQDN/ca.cer /usr/share/ca-certificates/ca.crt
+sudo cp /home/$USER/.acme.sh/$FQDN/ca.cer /usr/share/ca-certificates/ca.crt
 sudo su
 echo 'ca.crt' >> /etc/ca-certificates.conf
 update-ca-certificates
@@ -115,13 +115,13 @@ sudo echo -e "tlscertpath=/home/$USER/.acme.sh/$FQDN/$FQDN.cer\ntlskeypath=/home
 # Run ZEND again
 zend
 
-# Look for TLS cert status true – a line should say “tls_cert_verified”: true
+# Look for TLS cert status true ï¿½ a line should say ï¿½tls_cert_verifiedï¿½: true
 zen-cli getnetworkinfo
 
 # -----------------------------------------------------------------------------------------------------------------
 # Configure Secure Node Requirements
 
-# Create a new transparent address on your swing wallet – send it 42 zen. This is the collateral address <T_ADDR>.
+# Create a new transparent address on your swing wallet ï¿½ send it 42 zen. This is the collateral address <T_ADDR>.
 # Do not send real ZEN to the node! Make sure the ZEN stays in that address, else your Secure Node will fail its checks.
 
 # See if the node already has a shielded address:
@@ -190,3 +190,8 @@ sudo rkhunter --propupd
 EOF
 
 chmod u+x ~/upgrade_script.sh
+
+hosts file
+hostname -b
+
+

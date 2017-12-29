@@ -411,7 +411,7 @@ do
 done
 }
 
-#runInitialSetup
+runInitialSetup
 
 #######################################################BASIC SETUP COMPLETED####################################################
 
@@ -420,6 +420,8 @@ done
 ##Variables
 USERNAME=$(pwgen -s 16 1)
 PASSWORD=$(pwgen -s 64 1)
+NODE_TLS_CERTIFIED='False'
+NODE_Z_ADDR=''
 
 ##Functions
 getProcessorName () {
@@ -635,9 +637,20 @@ checkBlocksAreIncreasing () {
         displayKVBlueWhite2col "Current Local Block: " "$currentBlock"
         displayKVBlueWhite2col "Current Explorer Block: " "$latestExplorer"
         displayKVBlueWhite2col "Percentage Completed: " "$percentageComplete"
-        displayKVBlueWhite2col "Blocks Increasing: " "$blocksIncreasing"      
+        displayKVBlueWhite2col "Blocks Increasing: " "$blocksIncreasing"
 
+        lastBlock=$currentBlock
 	done
+}
+
+displayCurrentBlockStatus () {
+        currentBlock=$(getLatestBlockOnLocal)
+        latestExplorer=$(getLatestBlockOnExplorer)
+        percentageComplete=$(getPercentageBlockCompletion)
+
+        displayKVBlueWhite2col "Current Local Block: " "$currentBlock"
+        displayKVBlueWhite2col "Current Explorer Block: " "$latestExplorer"
+        displayKVBlueWhite2col "Percentage Completed: " "$percentageComplete"
 }
 
 installTLSCertificate () {
@@ -670,7 +683,48 @@ installTLSCertificate () {
 
 checkZenNodeHasTLS () {
     certified=$(zen-cli getnetworkinfo | python -c "import sys, json; print json.load(sys.stdin)[ 'tls_cert_verified' ] " | tail -n1)
+    certifiedDisplay=$(stringComparison $certified "True")
+    displayKVBlueWhite2col "TLS Certified: " "$certifiedDisplay"
     echo -e "$certified"
+
+}
+
+getNewNodeZAddr () {
+    NODE_Z_ADDR=$(zen-cli z_getnewaddress | head -n1)
+    displayKVBlueWhite2col "New z_address: " "$NODE_Z_ADDR"
+}
+
+displayTxMessage () {
+    echo -e "In order for the node to pass challenges you must transfer"
+    echo -e "several small amounts of ZEN to the private address on the"
+    echo -e "node. This script can autogenerate the commands necessary"
+    echo -e "to do that if you would like."
+    read -rep "Would you like to autogenerate the commands? (y/n) + [enter]" CONTINUE
+    if [ "$CONTINUE" == 'y']
+    then
+        generateNodeTxCommands
+    else
+        echo -e "To provide enough ZEN for challenges over the next 3 years"
+        echo -e "please sent 5 separate transactions of 0.03ZEN to the following "
+        echo -e "private address (z addr) on the node."
+        echo -e "Please do not send a single transaction as this will not achieve"
+        echo -e "the desired result.\n"
+        displayKVBlueWhite2col "z_addr: " "$NODE_Z_ADDR"
+        echo -e "\nIt will not be possible to check the balance until the blockchain"
+        echo -e "has fully synced. Also please be aware that if you send ZEN using"
+        echo -e "your local wallet, it will automatically return any 'change' from"
+        echo -e "the transaction to a new address. Please make sure at the end of"
+        echo -e "the transactions your stake address has 42 ZEN in it." 
+        displayKVBlueWhite2col "Stake Address: " "$STAKE_ADDR"
+        displayCurrentBlockStatus
+}
+
+generateNodeTxCommands () {
+    read -rep "Please enter ZEN address you will be sending from: " FROM_ADDR
+    read -rep "Please enter the current ZEN balance of that address e.g. 56.7092321: " FROM_ADDR_CURRENT_BAL
+    for (( i=1; i<=5; i++))
+	do
+        read -rep "Please enter ZEN address you will be sending from: " 
 }
 
 ############################## RUN ###############################
@@ -704,5 +758,10 @@ installTLSCertificate
 echo "Restarting Zen Node Software..."
 zend
 sleep 10s
-
-
+echo "Checking that Zen is registering as TLS certified..."
+checkZenNodeHasTLS
+echo "Checking again that Zen blockchain is syncing..."
+checkBlocksAreIncreasing
+echo "Generating a shielded address..."
+getNewNodeZAddr
+displayTxMessage
