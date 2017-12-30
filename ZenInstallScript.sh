@@ -280,9 +280,23 @@ else
 fi
 }
 
+getTAddressBalance ()
+{
+    addressBalance=$(curl -s https://explorer.zensystem.io/insight-api-zen/addr/$1 | python -c "import sys, json; print json.load(sys.stdin)[ 'balance' ]" | tail -n1)
+    echo -e "$addressBalance"
+}
+
 setZENtAddressBalance () {
-    STAKE_ADDR_BALANCE_FLOAT=$(curl -s https://explorer.zensystem.io/insight-api-zen/addr/$1 | python -c "import sys, json; print json.load(sys.stdin)[ 'balance' ]" | tail -n1)
+    STAKE_ADDR_BALANCE_FLOAT=$(getTAddressBalance $1)
     STAKE_ADDR_BALANCE=$(( ${STAKE_ADDR_BALANCE_FLOAT%.*} + 0 ))
+}
+
+checkIfValidPublicZenAddress () {
+    if [ ${#1} == 35 ] && (( $(echo -e "$1" | cut -c-2) == "zn" ))
+    then
+        return 1
+    else
+        return 0
 }
 
 ## Gets Stake Address
@@ -292,7 +306,8 @@ while [ "$STAKE_ADDR_VALID" != "y" ]
 do
     read -rep $'\e[96mPlease enter your public ZenCash Stake Address\nwith 42 ZEN on it which starts with \"zn...\" and is 35\ncharacters long, (this should be in your local wallet,\nnot on the node!) and press [enter]:\e[39m ' STAKE_ADDR 
     ################# Test if Stake Address format matches expected t_addr type
-    if [ ${#STAKE_ADDR} -ne 35 ] || (( $(echo -e "$STAKE_ADDR" | cut -c-2) != "zn" ))
+    checkAddr=$(checkIfValidPublicZenAddress $STAKE_ADDR)
+    if [ $checkAddr == 0 ]
     then
         echo -e "\e[91mIncorrect address length or type, stake addresses\nmust be public ZenCash addresses (t addr, 35 chars long)\nand from a wallet on the main blockchain.\e[39m"
         continue
@@ -603,7 +618,6 @@ createZenConfFile () {
     logtimestamps=1
     ### testnet config
     #testnet=1" > ~/.zen/zen.conf
-
 }
 
 getLatestBlockOnExplorer () {
@@ -718,14 +732,32 @@ displayTxMessage () {
         displayKVBlueWhite2col "Stake Address: " "$STAKE_ADDR"
         displayCurrentBlockStatus
 }
-
+#TODO
 generateNodeTxCommands () {
-    read -rep "Please enter ZEN address you will be sending from: " FROM_ADDR
-    read -rep "Please enter the current ZEN balance of that address e.g. 56.7092321: " FROM_ADDR_CURRENT_BAL
+    read -rep "Please enter ZEN address you will be sending from preferably a public address: " FROM_ADDR
+    checkAddr=$(checkIfValidPublicZenAddress $FROM_ADDR)
+    if [ $checkAddr == 1 ]
+    then
+        echo -e "Address is a public address will retrieve balance now..."
+        FROM_ADDR_CURRENT_BAL=$(getTAddressBalance $FROM_ADDR)
+        balanceHighEnough=$(numberComparisonA_gte_B $FROM_ADDR_CURRENT_BAL "0.15")
+        if [ $balanceHighEnough == 1 ]
+        then
+            echo -e "Address balance is sufficient to generate transactions."
+            displayKVBlueWhite2col "Address Balance: " $FROM_ADDR_CURRENT_BAL
+            echo -e "Generating transactions for you..."
+        else
+
+    else
+        echo -e "Unable to retrieve balance automatically"
+        read -rep "Please enter the current ZEN balance of that address e.g. 56.7092321: " FROM_ADDR_CURRENT_BAL
+    fi
+
     for (( i=1; i<=5; i++))
 	do
         read -rep "Please enter ZEN address you will be sending from: " 
 }
+
 
 ############################## RUN ###############################
 displayBreakLine
