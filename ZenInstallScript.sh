@@ -121,9 +121,23 @@ SETUPACCEPTED='n'
 displayKVBlueWhite2col () {
     echo -e $'\e[96m'$1$'\e[39m'$2
 }
-displayKeyValueGreenWhite2col () {
-    echo -e $'\e[96m'$1$'\e[39m'$2
+
+displayKVBlueGreen2col () {
+    echo -e $'\e[96m'$1$'\e[92m'$2'\e[39m'
 }
+
+displayKVBlueRed2col () {
+    echo -e $'\e[96m'$1$'\e[91m'$2'\e[39m'
+}
+
+displayKeyValueGreenWhite2col () {
+    echo -e $'\e[92m'$1$'\e[39m'$2
+}
+
+displayKeyValueRedWhite2col () {
+    echo -e $'\e[91m'$1$'\e[39m'$2
+}
+
 
 ##Comparison functions 
 #accepts 2 strings and compares them, returns FALSE/TRUE with appropriate colours
@@ -228,6 +242,12 @@ fi
 displayBreakLine
 }
 
+setHostInformation () {
+#TODO
+#/etc/hosts
+#hostname -b FQDN
+}
+
 ## Gets FQDN
 getFQDN () {
 displayPreamble
@@ -293,6 +313,14 @@ setZENtAddressBalance () {
 
 checkIfValidPublicZenAddress () {
     if [ ${#1} == 35 ] && (( $(echo -e "$1" | cut -c-2) == "zn" ))
+    then
+        return 1
+    else
+        return 0
+}
+
+checkIfValidShieldedZenAddress () {
+    if [ ${#1} == 95 ] && (( $(echo -e "$1" | cut -c-2) == "zc" ))
     then
         return 1
     else
@@ -634,12 +662,12 @@ getPercentageBlockCompletion () {
     latestExplorer=$(getLatestBlockOnExplorer)
     latestLocal=$(getLatestBlockOnLocal)
     percentageComplete=$(bc <<< "($latestLocal / $latestExplorer) * 100")
-    echo -e "$percentageComplete %"
+    echo -e "$percentageComplete%"
 }
 
 checkBlocksAreIncreasing () {
     lastBlock=$(getLatestBlockOnLocal)
-    for (( i=1; i<=5; i++))
+    for (( i=1; i<=$1; i++))
 	do
         sleep 5s
         currentBlock=$(getLatestBlockOnLocal)
@@ -712,18 +740,18 @@ displayTxMessage () {
     echo -e "In order for the node to pass challenges you must transfer"
     echo -e "several small amounts of ZEN to the private address on the"
     echo -e "node. This script can autogenerate the commands necessary"
-    echo -e "to do that if you would like."
-    read -rep "Would you like to autogenerate the commands? (y/n) + [enter]" CONTINUE
+    echo -e "to do that (Swing wallet only) if you would like."
+    read -rep "Would you like to attempt to autogenerate the commands? (y/n) + [enter]" CONTINUE
     if [ "$CONTINUE" == 'y']
     then
         generateNodeTxCommands
     else
         echo -e "To provide enough ZEN for challenges over the next 3 years"
-        echo -e "please sent 5 separate transactions of 0.03ZEN to the following "
+        echo -e "please send 5 separate transactions of 0.03ZEN to the following "
         echo -e "private address (z addr) on the node."
-        echo -e "Please do not send a single transaction as this will not achieve"
-        echo -e "the desired result.\n"
-        displayKVBlueWhite2col "z_addr: " "$NODE_Z_ADDR"
+        echo -e "Please do not send a single transaction of 0.15ZEN as this will not"
+        echo -e "achieve the desired result.\n"
+        displayKVBlueWhite2col "z addr: " "$NODE_Z_ADDR"
         echo -e "\nIt will not be possible to check the balance until the blockchain"
         echo -e "has fully synced. Also please be aware that if you send ZEN using"
         echo -e "your local wallet, it will automatically return any 'change' from"
@@ -731,31 +759,60 @@ displayTxMessage () {
         echo -e "the transactions your stake address has 42 ZEN in it." 
         displayKVBlueWhite2col "Stake Address: " "$STAKE_ADDR"
         displayCurrentBlockStatus
+    fi
 }
-#TODO
+
 generateNodeTxCommands () {
-    read -rep "Please enter ZEN address you will be sending from preferably a public address: " FROM_ADDR
+    read -rep "Please enter ZEN address you will be sending from, preferably a public address: " FROM_ADDR
     checkAddr=$(checkIfValidPublicZenAddress $FROM_ADDR)
     if [ $checkAddr == 1 ]
     then
         echo -e "Address is a public address will retrieve balance now..."
-        FROM_ADDR_CURRENT_BAL=$(getTAddressBalance $FROM_ADDR)
-        balanceHighEnough=$(numberComparisonA_gte_B $FROM_ADDR_CURRENT_BAL "0.15")
+        fromAddressCurrentBalance=$(getTAddressBalance $FROM_ADDR)
+        balanceHighEnough=$(numberComparisonA_gte_B $fromAddressCurrentBalance "0.15")
         if [ $balanceHighEnough == 1 ]
         then
             echo -e "Address balance is sufficient to generate transactions."
-            displayKVBlueWhite2col "Address Balance: " $FROM_ADDR_CURRENT_BAL
+            displayKVBlueGreen2col "Address Balance: " $fromAddressCurrentBalance
             echo -e "Generating transactions for you..."
+            for (( i=1; i<=5; i++))
+	        do
+                changeAmount=$(bc <<< "$fromAddressCurrentBalance - 0.0301")
+                #echo -e "zen-cli z_sendmany $fa" '"[{\"address\": \"'"$ta"'\", \"amount\": 0.03},{\"address\": \"'"$fa"'\", \"amount\": '"$change"'}]"'
+                echo -e "Please run the following command from the command line when in the"
+                echo -e "directory where the zen-cli executable from Swing wallet is found."
+                #Generate command
+                displayKeyValueGreenWhite2col "Transaction number $1:" "zen-cli z_sendmany $FROM_ADDR" '"[{\"address\": \"'"$NODE_Z_ADDR"'\", \"amount\": 0.03},{\"address\": \"'"$FROM_ADDR"'\", \"amount\": '"$changeAmount"'}]"'
+
+                read -rep "\nWhen you have finished press any key to generate the next command." CONTINUE
+                fromAddressCurrentBalance=$changeAmount
+            done
         else
-
+            echo -e "Address balance is insufficient to generate transactions."
+            echo -e "Please transfer sufficient funds to cover the payments."
+            displayKVBlueRed2col "Address Balance: " $fromAddressCurrentBalance
+            echo -e "Restarting..."
+            generateNodeTxCommands
     else
-        echo -e "Unable to retrieve balance automatically"
-        read -rep "Please enter the current ZEN balance of that address e.g. 56.7092321: " FROM_ADDR_CURRENT_BAL
-    fi
+        echo -e "Entered address is invalid, please try again."
+        generateNodeTxCommands
+    fi        
+}
 
-    for (( i=1; i<=5; i++))
-	do
-        read -rep "Please enter ZEN address you will be sending from: " 
+getSecureNodeInformation () {
+#TODO get info necessary to replace "node setup.js"
+}
+
+waitForBlockchainToSync () {
+#TODO 
+}
+
+setupSecnodeTracker () {
+#TODO
+}
+
+checkChallenge () {
+#TODO
 }
 
 
@@ -773,7 +830,8 @@ echo "Creating new user..."
 createNewUser
 echo "Doing basic security setup..."
 doBasicSecuritySetup
-echo "Creating upgrade script, after installation run with 'cd ~/ && ./upgrade_script.sh' ..."
+echo "Creating upgrade script, after installation run with 'cd ~/ && ./upgrade_script.sh'"
+echo "to upgrade your Zen tracker... "
 createUpgradeScript
 echo "Installing Zen..."
 installZen
@@ -783,7 +841,7 @@ createZenConfFile
 echo "Starting Zen Node Software..."
 zend
 echo "Checking that Zen blockchain is syncing..."
-checkBlocksAreIncreasing
+checkBlocksAreIncreasing 5
 echo "Installing software to enable ZenCash secure node..."
 installTLSCertificate
 #start zend
@@ -793,7 +851,16 @@ sleep 10s
 echo "Checking that Zen is registering as TLS certified..."
 checkZenNodeHasTLS
 echo "Checking again that Zen blockchain is syncing..."
-checkBlocksAreIncreasing
+checkBlocksAreIncreasing 5
 echo "Generating a shielded address..."
 getNewNodeZAddr
 displayTxMessage
+echo "The next part of the setup is to create the connection to the"
+echo "ZenCash secure node tracker. In order to complete successfully"
+echo "your block chain synchronisation must be complete. This script"
+echo "will get needed variables first and then execute the connection"
+echo "when the blockchain has synced."
+getSecureNodeInformation
+waitForBlockchainToSync
+setupSecnodeTracker
+#checkChallengeTime? or just end with link to node?
